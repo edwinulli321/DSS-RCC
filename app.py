@@ -457,7 +457,7 @@ def decision_chain_figure(f):
     return plot_layout(fig,240)
 
 # ----------------------------- PDF -----------------------------
-def pdf_report(f, responsable=""):
+def pdf_report(f, fa=None, responsable=""):
     if not REPORTLAB_OK:return None
     buff=io.BytesIO(); doc=SimpleDocTemplate(buff,pagesize=A4,rightMargin=15*mm,leftMargin=15*mm,topMargin=14*mm,bottomMargin=14*mm)
     styles=getSampleStyleSheet()
@@ -528,6 +528,69 @@ def pdf_report(f, responsable=""):
         ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.HexColor('#F8FAFC'),colors.white])
     ]))
     story += [et,Spacer(1,8),Paragraph('<b>Lectura para la decisión:</b> el DSS distingue entre evidencia disponible, evidencia parcial y elementos pendientes de validación. Una señal operacional permite priorizar la investigación, pero no confirma por sí sola contaminación cruzada ni una causa raíz.',note),Spacer(1,6),Paragraph('<b>Criterio de cierre:</b> la acción correctiva debe aprobarse con revisión del responsable de Calidad/Inocuidad y reevaluarse con datos posteriores a la intervención.',note),Spacer(1,18),HRFlowable(width='70%',thickness=.6,color=colors.grey),Paragraph(f'Responsable de Calidad / Inocuidad: {responsable.strip() if responsable.strip() else "_______________________________"}',body),Paragraph('Fecha de revisión: ____ / ____ / ______',body)]
+    # 8. COMPARACIÓN ANTES / DESPUÉS Y DECISIÓN GERENCIAL
+    story += [PageBreak(), Paragraph('8. Resultado Antes / Después y decisión gerencial', h1)]
+    if fa is not None and not fa.empty:
+        mb=metric_pack(f); ma=metric_pack(fa)
+        comp_rows=[['Indicador','Antes','Después','Reducción relativa']]
+        for indicador in ['% NC','% Retrabajo','Defecto sellado','Incid. higiene','Incid. limpieza','Incid. manipulación']:
+            b=float(mb.get(indicador,0) or 0); a=float(ma.get(indicador,0) or 0); rr=reduction_pct(b,a)
+            comp_rows.append([indicador,f'{b:.2f}',f'{a:.2f}','N/D' if pd.isna(rr) else f'{rr:.2f}%'])
+        ct=Table(comp_rows,colWidths=[48*mm,32*mm,32*mm,48*mm],repeatRows=1)
+        ct.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#2563EB')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#B7C2CC')),('FONTSIZE',(0,0),(-1,-1),8),('VALIGN',(0,0),(-1,-1),'TOP'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F6F8FA')])]))
+        story += [ct,Spacer(1,8)]
+
+        bnc=float(mb.get('% NC',0) or 0); anc=float(ma.get('% NC',0) or 0); rnc=reduction_pct(bnc,anc)
+        crit_after=critical(fa); sig_after=signals(fa)
+        proc_after='No determinado' if crit_after is None else str(crit_after.proceso)
+        proc_after_nc=np.nan if crit_after is None else float(crit_after.Porcentaje_NC)
+        signal_after='Sin señal cuantificable' if sig_after.empty else str(sig_after.iloc[0].Señal)
+        action_after='Mantener vigilancia de los indicadores y documentar la revisión.' if sig_after.empty else str(sig_after.iloc[0]['Acción sugerida'])
+
+        if pd.isna(rnc):
+            estado='EVIDENCIA INSUFICIENTE PARA CALCULAR REDUCCIÓN RELATIVA'
+            decision='No cerrar la intervención. Verificar la línea base y recopilar datos comparables antes de aprobar una decisión definitiva.'
+        elif rnc >= 50:
+            estado='MEJORA IMPORTANTE OBSERVADA'
+            decision='Mantener y estandarizar las mejoras implementadas, reforzando el control del proceso crítico residual y verificando que el resultado se sostenga en el periodo de seguimiento.'
+        elif rnc > 0:
+            estado='MEJORA OBSERVADA, AÚN REQUIERE SEGUIMIENTO'
+            decision='Continuar la intervención y reforzar las acciones sobre el proceso y la señal prioritaria hasta demostrar estabilidad y cumplimiento del objetivo definido.'
+        elif rnc == 0:
+            estado='SIN CAMBIO OBSERVADO'
+            decision='Revisar la intervención, volver a la fase Analizar de DMAIC y verificar las hipótesis de causa antes de mantener o modificar las acciones.'
+        else:
+            estado='DETERIORO DEL INDICADOR'
+            decision='Priorizar acción correctiva. Revisar inmediatamente la intervención y las condiciones del proceso, verificar causas y establecer seguimiento reforzado antes del cierre.'
+
+        story += [Paragraph('9. Recomendación automática para la toma de decisiones',h1),
+                  Paragraph(f'<b>Estado:</b> {estado}',body),
+                  Paragraph(f'<b>Resultado principal:</b> la no conformidad pasó de {bnc:.2f}% a {anc:.2f}%'+(' (reducción relativa no calculable).' if pd.isna(rnc) else f', equivalente a una reducción relativa de {rnc:.2f}%.'),body),
+                  Paragraph(f'<b>Proceso crítico residual:</b> {proc_after}'+('' if pd.isna(proc_after_nc) else f' ({proc_after_nc:.2f}% NC).'),body),
+                  Paragraph(f'<b>Señal prioritaria después de la intervención:</b> {signal_after}.',body),
+                  Paragraph(f'<b>DECISIÓN RECOMENDADA POR EL DSS-RCC:</b> {decision}',body),
+                  Paragraph(f'<b>Acción prioritaria sugerida:</b> {action_after}',body)]
+
+        acciones=[['Prioridad','Acción','Responsable sugerido','Indicador de control','Criterio de seguimiento'],
+                  ['1',action_after,'Calidad / Inocuidad','% NC y señal prioritaria','Verificar tendencia en el siguiente periodo'],
+                  ['2',f'Investigar la causa de {signal_after} mediante evidencia e Ishikawa 6M','Calidad + Operaciones','Evidencia de causa / recurrencia','No cerrar causa raíz sin verificación'],
+                  ['3',f'Reforzar control en {proc_after}','Operaciones','% NC por proceso','Comparar con línea base y meta'],
+                  ['4','Aplicar SPC cuando exista variable continua y límites válidos','Calidad / Proceso','Puntos fuera de control / estabilidad','Reaccionar ante señales especiales']]
+        ap=[[Paragraph(str(x), note if i>0 else ParagraphStyle('th2',parent=note,textColor=colors.white,fontName='Helvetica-Bold',fontSize=7,leading=8)) for x in row] for i,row in enumerate(acciones)]
+        at=Table(ap,colWidths=[15*mm,55*mm,32*mm,31*mm,32*mm],repeatRows=1)
+        at.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0F766E')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#B7C2CC')),('VALIGN',(0,0),(-1,-1),'TOP'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.HexColor('#F8FAFC'),colors.white])]))
+        story += [Paragraph('10. Plan de acción para ejecución y seguimiento',h1),at,Spacer(1,8),
+                  Paragraph('<b>Criterio gerencial:</b> una mejora descriptiva Antes/Después respalda la continuidad o ajuste de la intervención, pero no demuestra por sí sola causalidad. La causa raíz y el cierre de la acción deben ser validados por el responsable de Calidad/Inocuidad.',note),
+                  Paragraph('<b>Regla de reevaluación:</b> si el indicador vuelve a aumentar, aparecen nuevas señales críticas o el proceso pierde estabilidad, reabrir la fase Analizar de DMAIC y revisar el plan de mejora.',note)]
+    else:
+        story += [Paragraph('No se ha ejecutado un conjunto de datos DESPUÉS. El DSS puede priorizar riesgos y proponer acciones con la línea base, pero no debe concluir que existió una mejora hasta contar con datos posteriores comparables.',body),
+                  Paragraph('<b>Decisión provisional:</b> ejecutar las acciones priorizadas, definir responsables e indicadores y recopilar el periodo DESPUÉS para evaluar el resultado.',body)]
+
+    story += [Spacer(1,14),HRFlowable(width='70%',thickness=.6,color=colors.grey),
+              Paragraph(f'Aprobación / revisión final: {responsable.strip() if responsable.strip() else "_______________________________"}',body),
+              Paragraph('Decisión humana final:  ☐ Aprobar  ☐ Ajustar  ☐ Rechazar  ☐ Requiere más evidencia',body),
+              Paragraph('Fecha: ____ / ____ / ______',body)]
+
     doc.build(story);buff.seek(0);return buff.getvalue()
 
 # ----------------------------- HEADER -----------------------------
@@ -878,8 +941,8 @@ with tabs[8]:
         st.dataframe(comparison_long(f,fa).round(2),width='stretch',hide_index=True)
     responsable=st.text_input('👤 Nombre del responsable de Calidad / Inocuidad',placeholder='Ej.: Rosa Pérez',key='responsable_reporte')
     st.caption('El nombre ingresado aparecerá en el reporte gerencial PDF como responsable de la revisión.')
-    pdf=pdf_report(f,responsable)
+    pdf=pdf_report(f,fa,responsable)
     if pdf:
-        st.download_button('⬇️ Descargar reporte gerencial PDF',pdf,'Reporte_Gerencial_DSS_RCC_v14.pdf','application/pdf',width='stretch')
+        st.download_button('⬇️ Descargar reporte gerencial PDF',pdf,'Reporte_Gerencial_DSS_RCC_Decisiones_v16.pdf','application/pdf',width='stretch')
     else:st.error('Para generar el PDF instale ReportLab: python3 -m pip install reportlab')
     footer()
