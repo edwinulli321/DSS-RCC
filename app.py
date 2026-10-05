@@ -1,4 +1,4 @@
-# DSS-RCC v15 EXECUTIVE · ANTES / DESPUÉS / REDUCCIÓN · UI MEJORADA
+# DSS-RCC v18 UNIVERSAL · FMEA + LEAN + SPC + REPORTE GERENCIAL PROFESIONAL
 # Sistema de Apoyo a Decisiones para la Gestión Integrada del Riesgo de Contaminación Cruzada
 # Streamlit | SIPOC/VSM + Diagnóstico + Pre-FMEA + DMAIC + Ishikawa + Lean + SPC + Validación + Decisiones + PDF
 
@@ -98,6 +98,13 @@ h1,h2,h3,h4 {{color:#FFFFFF!important; font-weight:800!important;}}
 .kpi .value {{color:#FFFFFF!important;font-size:2.35rem!important;font-weight:900!important;line-height:1.05!important;text-shadow:0 2px 8px rgba(0,0,0,.3);}}
 .kpi .sub {{color:#9EDCFF!important;font-size:.82rem!important;font-weight:650!important;}}
 [data-testid="stDataFrame"] {{border:1px solid #4B7292;border-radius:10px;overflow:hidden;}}
+/* v18: tipografía y tablas más legibles */
+.stApp {{font-family: Inter, Arial, sans-serif;}}
+.block-container {{max-width: 1650px;}}
+p, li, .stMarkdown {{font-size:1rem; line-height:1.55;}}
+[data-testid="stDataFrame"] * {{font-size:.92rem!important;}}
+[data-testid="stCaptionContainer"] {{color:#C8D6E5!important;font-size:.88rem!important;}}
+hr {{border-color:#315B7D!important;}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -111,7 +118,9 @@ ALIASES = {
     'fecha':['fecha','date'], 'producto':['producto','product'], 'lote':['lote','lot'], 'proceso':['proceso','process'],
     'inspeccionadas':['inspeccionadas','inspeccionados','unidades_inspeccionadas','cantidad_inspeccionada'],
     'no_conformes':['no_conformes','no_conforme','nc','unidades_no_conformes'],
-    'retrabajo':['retrabajo','retrabajos','rework'],
+    'retrabajo':['retrabajo','retrabajos','rework','numero_retrabajos'],
+    'numero_retrabajos':['numero_retrabajos','retrabajos_num','cantidad_retrabajos'],
+    'numero_manipulaciones':['numero_manipulaciones','manipulaciones','cantidad_manipulaciones'],
     'defecto_sellado':['defecto_sellado','defectos_sellado','sellado','defecto_de_sellado'],
     'incid_higiene':['incid_higiene','incidencia_higiene','incidencias_higiene'],
     'incid_limpieza':['incid_limpieza','incidencia_limpieza','incidencias_limpieza'],
@@ -123,6 +132,19 @@ ALIASES = {
     'tiempo_va_min':['tiempo_va_min','tiempo_va','value_added_min'],
     'periodo':['periodo','period','etapa'],
     'lsl':['lsl','limite_inferior_especificacion'], 'usl':['usl','limite_superior_especificacion'],
+    'empresa':['empresa'], 'hora':['hora'], 'area':['area'], 'turno':['turno'],
+    'eventos_riesgo':['eventos_riesgo','eventos_de_riesgo'], 'tipo_manipulacion':['tipo_manipulacion'],
+    'tipo_peligro':['tipo_peligro'], 'producto_expuesto':['producto_expuesto'],
+    'contacto_directo_producto':['contacto_directo_producto'], 'alcance_exposicion':['alcance_exposicion'],
+    'barrera_posterior':['barrera_posterior'], 'producto_liberado':['producto_liberado'],
+    'fuente_riesgo':['fuente_riesgo'], 'mecanismo_contaminacion':['mecanismo_contaminacion'],
+    'evento_observado':['evento_observado'], 'higiene_manos':['higiene_manos'], 'epp_guantes':['epp_guantes'],
+    'limpieza_superficie':['limpieza_superficie'], 'sanitizacion':['sanitizacion'], 'segregacion':['segregacion'],
+    'integridad_empaque':['integridad_empaque'], 'control_alergenos':['control_alergenos'],
+    'tipo_control_deteccion':['tipo_control_deteccion'], 'cobertura_control':['cobertura_control'],
+    'momento_control':['momento_control'], 'registro_control':['registro_control'],
+    'tiempo_exposicion_min':['tiempo_exposicion_min'], 'accion_inmediata':['accion_inmediata'],
+    'responsable':['responsable'], 'estado':['estado'],
 }
 
 def canonicalize(df):
@@ -147,20 +169,21 @@ def clean(df):
     d = canonicalize(df.copy())
     if 'fecha' in d: d['fecha'] = pd.to_datetime(d['fecha'], errors='coerce')
     nums = ['inspeccionadas','no_conformes','retrabajo','defecto_sellado','incid_higiene','incid_limpieza','incid_manipulacion',
-            'temperatura_c','tiempo_ciclo_min','tiempo_espera_min','tiempo_va_min','lsl','usl']
+            'temperatura_c','tiempo_exposicion_min','eventos_riesgo','tiempo_ciclo_min','tiempo_espera_min','tiempo_va_min','numero_retrabajos','numero_manipulaciones','lsl','usl']
     for c in nums:
         if c in d: d[c] = pd.to_numeric(d[c], errors='coerce')
-    for c in ['producto','lote','proceso','resultado_laboratorio','periodo']:
+    for c in ['empresa','producto','lote','proceso','area','turno','tipo_manipulacion','tipo_peligro','producto_expuesto','contacto_directo_producto','alcance_exposicion','barrera_posterior','producto_liberado','fuente_riesgo','mecanismo_contaminacion','evento_observado','higiene_manos','epp_guantes','limpieza_superficie','sanitizacion','segregacion','integridad_empaque','control_alergenos','tipo_control_deteccion','cobertura_control','momento_control','registro_control','accion_inmediata','responsable','estado','resultado_laboratorio','periodo']:
         if c in d: d[c] = d[c].fillna('No especificado').astype(str).str.strip()
     return d
 
 def validate(d):
-    req = ['fecha','producto','lote','proceso','inspeccionadas','no_conformes']
+    req = ['fecha','producto','lote','proceso','inspeccionadas','no_conformes','eventos_riesgo']
     missing = [x for x in req if x not in d.columns]
     issues=[]
     if missing: return missing, issues
     if (d['inspeccionadas'].fillna(0)<0).any() or (d['no_conformes'].fillna(0)<0).any(): issues.append('Existen cantidades negativas.')
     if (d['no_conformes'].fillna(0)>d['inspeccionadas'].fillna(0)).any(): issues.append('Hay registros con No conformes > Inspeccionadas.')
+    if (d['eventos_riesgo'].fillna(0)<0).any(): issues.append('Existen eventos de riesgo negativos.')
     if 'retrabajo' in d and (d['retrabajo'].fillna(0)>d['inspeccionadas'].fillna(0)).any(): issues.append('Hay Retrabajo > Inspeccionadas.')
     return missing, issues
 
@@ -195,27 +218,91 @@ def process_summary(f):
     g['Porcentaje_NC']=np.where(g.Inspeccionadas>0,100*g.No_conformes/g.Inspeccionadas,0)
     return g.sort_values('Porcentaje_NC',ascending=False)
 
+def _txt(v):
+    return norm('' if pd.isna(v) else v)
+
+def occurrence_score(inspeccionadas, eventos):
+    try:
+        i=float(inspeccionadas); e=float(eventos)
+        if i <= 0: return np.nan
+        rate=100.0*e/i
+        if rate <= 1: return 1
+        if rate <= 3: return 2
+        if rate <= 5: return 3
+        if rate <= 10: return 4
+        return 5
+    except Exception: return np.nan
+
+def severity_score(row):
+    peligro=_txt(row.get('tipo_peligro','')); exp=_txt(row.get('producto_expuesto',''))=='si'
+    contacto=_txt(row.get('contacto_directo_producto',''))=='si'; alcance=_txt(row.get('alcance_exposicion',''))
+    barrera=_txt(row.get('barrera_posterior','')); liberado=_txt(row.get('producto_liberado',''))=='si'
+    score=1 if (not exp and not contacto) else (2 if exp and not contacto else 3)
+    if alcance in ('varias_unidades','lote','indeterminado'): score += 1
+    if peligro in ('biologico','quimico','alergeno') and contacto: score += 1
+    if barrera=='si': score -= 1
+    elif barrera in ('no','no_se_conoce') and contacto: score += 1
+    if liberado and contacto: score += 1
+    return int(max(1,min(5,score)))
+
+def detection_score(row):
+    tipo=_txt(row.get('tipo_control_deteccion','')); cobertura=_txt(row.get('cobertura_control',''))
+    momento=_txt(row.get('momento_control','')); registro=_txt(row.get('registro_control',''))
+    base={'automatico_instrumentado':1,'inspeccion_100':2,'inspeccion_visual_100':2,'inspeccion_por_muestreo':3,'observacion_ocasional':4,'sin_control':5}.get(tipo,3)
+    if cobertura=='ninguna': base=5
+    elif cobertura=='ocasional': base=max(base,4)
+    elif cobertura=='muestreo': base=max(base,3)
+    elif cobertura=='100': base=min(base,2)
+    if momento in ('despues_de_liberar','no_existe'): base=5
+    elif momento in ('antes_de_liberar','durante_el_proceso'): base=max(1,base-1)
+    if registro=='no': base=min(5,base+1)
+    return int(max(1,min(5,base)))
+
+def risk_level(npr):
+    if pd.isna(npr): return 'N/D'
+    if npr <= 20: return 'Bajo'
+    if npr <= 40: return 'Moderado'
+    if npr <= 70: return 'Alto'
+    return 'Crítico'
+
+def fmea_rows(f):
+    if f is None or f.empty or not all(c in f for c in ['inspeccionadas','eventos_riesgo']): return pd.DataFrame()
+    d=f.copy(); d['Frecuencia_eventos_100']=np.where(d.inspeccionadas>0,100*d.eventos_riesgo/d.inspeccionadas,np.nan)
+    d['S']=d.apply(severity_score,axis=1); d['O']=d.apply(lambda r: occurrence_score(r.get('inspeccionadas'),r.get('eventos_riesgo')),axis=1)
+    d['D']=d.apply(detection_score,axis=1); d['NPR']=d.S*d.O*d.D; d['Nivel_riesgo']=d.NPR.apply(risk_level)
+    return d
+
+def fmea_summary(f):
+    x=fmea_rows(f)
+    if x.empty: return pd.DataFrame()
+    keys=[c for c in ['proceso','fuente_riesgo','mecanismo_contaminacion','tipo_peligro'] if c in x]
+    g=x.groupby(keys,dropna=False,as_index=False).agg(Registros=('NPR','size'),Inspeccionadas=('inspeccionadas','sum'),Eventos=('eventos_riesgo','sum'),S=('S','max'),D=('D','max'))
+    g['Eventos_100']=np.where(g.Inspeccionadas>0,100*g.Eventos/g.Inspeccionadas,0); g['O']=g.apply(lambda r: occurrence_score(r.Inspeccionadas,r.Eventos),axis=1)
+    g['NPR']=g.S*g.O*g.D; g['Nivel']=g.NPR.apply(risk_level)
+    return g.sort_values(['NPR','Eventos'],ascending=False).reset_index(drop=True)
+
+def compare_fmea(before, after):
+    b=fmea_summary(before); a=fmea_summary(after); key='proceso'
+    def byproc(x,prefix):
+        if x.empty:return pd.DataFrame(columns=[key,f'NPR_{prefix}',f'Eventos100_{prefix}'])
+        return x.groupby(key,as_index=False).agg(**{f'NPR_{prefix}':('NPR','max'),f'Eventos100_{prefix}':('Eventos_100','mean')})
+    c=pd.merge(byproc(b,'Antes'),byproc(a,'Después'),on=key,how='outer')
+    c['Reducción_NPR_%']=c.apply(lambda r: reduction_pct(r.get('NPR_Antes'),r.get('NPR_Después')),axis=1)
+    c['Reducción_eventos_%']=c.apply(lambda r: reduction_pct(r.get('Eventos100_Antes'),r.get('Eventos100_Después')),axis=1)
+    return c
+
 def signals(f):
-    mapping=[
-        ('Retrabajo','retrabajo','Variabilidad del método, defecto previo o condición operacional por verificar','Eliminar causa recurrente, estandarizar método y verificar reducción antes/después.'),
-        ('Defectos de sellado','defecto_sellado','Condición de sellado, ajuste, material o método por verificar','Verificar sellado; estandarizar parámetros y mantenimiento si la causa se confirma.'),
-        ('Incidencias de manipulación','incid_manipulacion','Manipulación o secuencia operacional por verificar','Reducir manipulación innecesaria, estandarizar secuencia y capacitar.'),
-        ('Incidencias de higiene','incid_higiene','Práctica de higiene por verificar','Reforzar higiene, capacitación y verificación documentada.'),
-        ('Incidencias de limpieza','incid_limpieza','Limpieza o cambio de condición por verificar','Estandarizar limpieza y verificar eficacia antes de liberar el proceso.'),
-    ]
     rows=[]
-    total=0
-    for name,col,cause,action in mapping:
+    if f is None or f.empty: return pd.DataFrame(columns=['Prioridad','Señal','Cantidad','Frecuencia_relativa_%','Causa potencial a verificar','Acción sugerida'])
+    if 'eventos_riesgo' in f: rows.append(['Eventos de riesgo',float(f.eventos_riesgo.fillna(0).sum()),'Fuentes y mecanismos de transferencia observados','Priorizar mecanismos con mayor frecuencia/NPR y verificar controles.'])
+    controls=[('Higiene de manos','higiene_manos'),('EPP / guantes','epp_guantes'),('Limpieza de superficie','limpieza_superficie'),('Sanitización','sanitizacion'),('Segregación','segregacion'),('Integridad de empaque','integridad_empaque'),('Control de alérgenos','control_alergenos')]
+    for name,col in controls:
         if col in f:
-            q=float(f[col].fillna(0).sum()); total+=q
-            rows.append([name,q,cause,action])
-    if not rows:
-        return pd.DataFrame(columns=['Señal','Cantidad','Frecuencia_relativa_%','Causa potencial a verificar','Acción sugerida'])
-    for r in rows: r.insert(2,pct(r[1],total))
-    out=pd.DataFrame(rows,columns=['Señal','Cantidad','Frecuencia_relativa_%','Causa potencial a verificar','Acción sugerida'])
-    out=out[out.Cantidad>0].sort_values('Cantidad',ascending=False).reset_index(drop=True)
-    out.insert(0,'Prioridad',range(1,len(out)+1))
-    return out
+            q=float(f[col].map(lambda v: 1 if _txt(v)=='no_conforme' else 0).sum()); rows.append([f'NC · {name}',q,f'Control {name.lower()} no conforme','Corregir el control, documentar acción y verificar eficacia.'])
+    rows=[r for r in rows if r[1]>0]
+    if not rows:return pd.DataFrame(columns=['Prioridad','Señal','Cantidad','Frecuencia_relativa_%','Causa potencial a verificar','Acción sugerida'])
+    total=sum(r[1] for r in rows); out=pd.DataFrame([[r[0],r[1],pct(r[1],total),r[2],r[3]] for r in rows],columns=['Señal','Cantidad','Frecuencia_relativa_%','Causa potencial a verificar','Acción sugerida'])
+    out=out.sort_values('Cantidad',ascending=False).reset_index(drop=True); out.insert(0,'Prioridad',range(1,len(out)+1)); return out
 
 def critical(f):
     g=process_summary(f)
@@ -243,7 +330,7 @@ def kpi(label,value,sub=''):
     st.markdown(f'<div class="kpi"><div class="label">{label}</div><div class="value">{value}</div><div class="sub">{sub}</div></div>',unsafe_allow_html=True)
 
 def footer():
-    st.markdown('<div class="footer">DSS-RCC v15 EXECUTIVE · Prototipo de investigación · Gestión integrada, explicable, trazable y con validación humana</div>',unsafe_allow_html=True)
+    st.markdown('<div class="footer">DSS-RCC v18 UNIVERSAL · Prototipo de investigación · Gestión integrada, explicable, trazable y con validación humana</div>',unsafe_allow_html=True)
 
 
 def reduction_pct(before, after):
@@ -272,38 +359,107 @@ def compare_signals(before, after):
     return c
 
 def metric_pack(q):
-    I=float(q.inspeccionadas.sum()) if q is not None and not q.empty else 0
-    N=float(q.no_conformes.sum()) if q is not None and not q.empty else 0
-    R=float(q.retrabajo.sum()) if q is not None and not q.empty and 'retrabajo' in q else 0
-    S=float(q.defecto_sellado.sum()) if q is not None and not q.empty and 'defecto_sellado' in q else 0
-    H=float(q.incid_higiene.sum()) if q is not None and not q.empty and 'incid_higiene' in q else 0
-    L=float(q.incid_limpieza.sum()) if q is not None and not q.empty and 'incid_limpieza' in q else 0
-    M=float(q.incid_manipulacion.sum()) if q is not None and not q.empty and 'incid_manipulacion' in q else 0
-    return {'Registros':0 if q is None else len(q),'Inspeccionadas':I,'% NC':pct(N,I),'% Retrabajo':pct(R,I),'Defecto sellado':S,'Incid. higiene':H,'Incid. limpieza':L,'Incid. manipulación':M}
+    """KPIs universales. Retrabajos se expresa como conteo, no como % de inspeccionadas."""
+    if q is None or q.empty:
+        return {'Registros':0,'Inspeccionadas':0.0,'No conformes':0.0,'% NC':0.0,'Retrabajos':0.0,'Eventos de riesgo':0.0,'Eventos / 100':0.0}
+    I=float(pd.to_numeric(q.get('inspeccionadas',0),errors='coerce').fillna(0).sum())
+    N=float(pd.to_numeric(q.get('no_conformes',0),errors='coerce').fillna(0).sum())
+    R=float(pd.to_numeric(q.get('numero_retrabajos',q.get('retrabajo',0)),errors='coerce').fillna(0).sum()) if ('numero_retrabajos' in q or 'retrabajo' in q) else 0.0
+    E=float(pd.to_numeric(q.get('eventos_riesgo',0),errors='coerce').fillna(0).sum()) if 'eventos_riesgo' in q else 0.0
+    return {'Registros':len(q),'Inspeccionadas':I,'No conformes':N,'% NC':pct(N,I),'Retrabajos':R,'Eventos de riesgo':E,'Eventos / 100':pct(E,I)}
 
 def comparison_long(before, after):
     b=metric_pack(before); a=metric_pack(after)
     rows=[]
     for k in b:
-        rows.append({'Indicador':k,'Antes':b[k],'Después':a[k],'Reducción_%':reduction_pct(b[k],a[k])})
+        # Registros e inspeccionadas son contexto; su "reducción" no se interpreta como mejora.
+        red=np.nan if k in ('Registros','Inspeccionadas') else reduction_pct(b[k],a[k])
+        rows.append({'Indicador':k,'Antes':b[k],'Después':a[k],'Reducción_%':red})
     return pd.DataFrame(rows)
 
 def filters_pair(before, after, key):
+    """Filtros comparables para ANTES/DESPUÉS. El lote no se usa porque normalmente cambia entre periodos."""
     pool=pd.concat([before, after],ignore_index=True) if after is not None and not after.empty else before.copy()
-    st.markdown('<div style="font-weight:850;color:#FFFFFF;font-size:1.02rem;margin:.15rem 0 .35rem 0">🔎 Filtros de análisis</div>',unsafe_allow_html=True)
-    st.caption('Los filtros se aplican simultáneamente a ANTES y DESPUÉS para mantener una comparación equivalente.')
-    c1,c2,c3=st.columns(3)
+    st.markdown('<div style="font-weight:850;color:#FFFFFF;font-size:1.05rem;margin:.15rem 0 .35rem 0">🔎 Filtros comparables</div>',unsafe_allow_html=True)
+    st.caption('Producto, proceso, área y turno se aplican a ambos periodos. El lote se excluye de la comparación porque ANTES y DESPUÉS suelen corresponder a lotes distintos.')
+    c1,c2,c3,c4=st.columns(4)
+    prods=['Todos']+sorted(pool.producto.dropna().astype(str).unique().tolist())
+    p=c1.selectbox('Producto',prods,key=f'p_{key}')
+    t1=pool if p=='Todos' else pool[pool.producto==p]
+    procs=['Todos']+sorted(t1.proceso.dropna().astype(str).unique().tolist())
+    pr=c2.selectbox('Proceso',procs,key=f'pr_{key}')
+    t2=t1 if pr=='Todos' else t1[t1.proceso==pr]
+    areas=['Todos']+sorted(t2.area.dropna().astype(str).unique().tolist()) if 'area' in t2 else ['Todos']
+    ar=c3.selectbox('Área',areas,key=f'ar_{key}')
+    t3=t2 if ar=='Todos' or 'area' not in t2 else t2[t2.area==ar]
+    turns=['Todos']+sorted(t3.turno.dropna().astype(str).unique().tolist()) if 'turno' in t3 else ['Todos']
+    tu=c4.selectbox('Turno',turns,key=f'tu_{key}')
+    def apply(q):
+        if q is None:return None
+        x=q.copy()
+        if p!='Todos':x=x[x.producto==p]
+        if pr!='Todos':x=x[x.proceso==pr]
+        if ar!='Todos' and 'area' in x:x=x[x.area==ar]
+        if tu!='Todos' and 'turno' in x:x=x[x.turno==tu]
+        return x
+    return apply(before),apply(after)
+
+def filters_pair_lean(before, after, key):
+    """Filtros comparables Lean: no usa lote porque ANTES y DESPUÉS suelen ser lotes distintos."""
+    pool=pd.concat([before, after],ignore_index=True) if after is not None and not after.empty else before.copy()
+    st.markdown('<div style="font-weight:850;color:#FFFFFF;font-size:1.02rem;margin:.15rem 0 .35rem 0">🔎 Filtros Lean comparables</div>',unsafe_allow_html=True)
+    st.caption('Para comparar ANTES y DESPUÉS no se usa Lote como filtro obligatorio, porque los lotes de ambos periodos normalmente son diferentes.')
+    c1,c2,c3,c4=st.columns(4)
     prods=['Todos']+sorted(pool.producto.dropna().astype(str).unique().tolist())
     p=c1.selectbox('Producto',prods,key=f'p_{key}')
     temp=pool if p=='Todos' else pool[pool.producto==p]
-    lots=['Todos']+sorted(temp.lote.dropna().astype(str).unique().tolist())
-    l=c2.selectbox('Lote',lots,key=f'l_{key}')
-    temp2=temp if l=='Todos' else temp[temp.lote==l]
-    procs=['Todos']+sorted(temp2.proceso.dropna().astype(str).unique().tolist())
-    pr=c3.selectbox('Proceso',procs,key=f'pr_{key}')
-    fb=filter_data(before,p,l,pr)
-    fa=filter_data(after,p,l,pr) if after is not None else None
-    return fb,fa
+    procs=['Todos']+sorted(temp.proceso.dropna().astype(str).unique().tolist())
+    pr=c2.selectbox('Proceso',procs,key=f'pr_{key}')
+    temp2=temp if pr=='Todos' else temp[temp.proceso==pr]
+    areas=['Todos']+sorted(temp2.area.dropna().astype(str).unique().tolist()) if 'area' in temp2 else ['Todos']
+    ar=c3.selectbox('Área',areas,key=f'ar_{key}')
+    temp3=temp2 if ar=='Todos' or 'area' not in temp2 else temp2[temp2.area==ar]
+    turns=['Todos']+sorted(temp3.turno.dropna().astype(str).unique().tolist()) if 'turno' in temp3 else ['Todos']
+    tu=c4.selectbox('Turno',turns,key=f'tu_{key}')
+    def apply(q):
+        if q is None: return None
+        x=q.copy()
+        if p!='Todos': x=x[x.producto==p]
+        if pr!='Todos': x=x[x.proceso==pr]
+        if ar!='Todos' and 'area' in x: x=x[x.area==ar]
+        if tu!='Todos' and 'turno' in x: x=x[x.turno==tu]
+        return x
+    return apply(before),apply(after)
+
+def lean_summary(before, after=None):
+    specs=[
+        ('Tiempo de exposición (min)','tiempo_exposicion_min','sum'),
+        ('Tiempo de ciclo (min)','tiempo_ciclo_min','mean'),
+        ('Tiempo de espera (min)','tiempo_espera_min','sum'),
+        ('Manipulaciones','numero_manipulaciones','sum'),
+        ('Retrabajos','numero_retrabajos','sum'),
+        ('Eventos de riesgo','eventos_riesgo','sum'),
+        ('Unidades no conformes','no_conformes','sum'),
+    ]
+    rows=[]
+    for label,col,agg in specs:
+        if col not in before.columns: continue
+        bser=pd.to_numeric(before[col],errors='coerce')
+        b=float(bser.mean() if agg=='mean' else bser.sum())
+        a=np.nan
+        if after is not None and col in after.columns:
+            aser=pd.to_numeric(after[col],errors='coerce')
+            a=float(aser.mean() if agg=='mean' else aser.sum())
+        rows.append([label,b,a,reduction_pct(b,a) if after is not None and not pd.isna(a) else np.nan])
+    # tasa NC comparable por denominador
+    bi=float(before.inspeccionadas.sum()) if 'inspeccionadas' in before else 0
+    bn=float(before.no_conformes.sum()) if 'no_conformes' in before else 0
+    bnc=pct(bn,bi)
+    anc=np.nan
+    if after is not None and 'inspeccionadas' in after and 'no_conformes' in after:
+        ai=float(after.inspeccionadas.sum()); an=float(after.no_conformes.sum()); anc=pct(an,ai)
+    rows.append(['No conformidad (%)',bnc,anc,reduction_pct(bnc,anc) if after is not None and not pd.isna(anc) else np.nan])
+    return pd.DataFrame(rows,columns=['Indicador Lean','Antes','Después','Reducción_%'])
 
 # ----------------------------- VISUAL DIAGRAMS -----------------------------
 def sipoc_figure(f):
@@ -457,140 +613,93 @@ def decision_chain_figure(f):
     return plot_layout(fig,240)
 
 # ----------------------------- PDF -----------------------------
-def pdf_report(f, fa=None, responsable=""):
+def pdf_report(before, after=None, responsable=""):
+    """Reporte gerencial comparativo, orientado a decisión y mejora."""
     if not REPORTLAB_OK:return None
-    buff=io.BytesIO(); doc=SimpleDocTemplate(buff,pagesize=A4,rightMargin=15*mm,leftMargin=15*mm,topMargin=14*mm,bottomMargin=14*mm)
+    buff=io.BytesIO()
+    doc=SimpleDocTemplate(buff,pagesize=A4,rightMargin=14*mm,leftMargin=14*mm,topMargin=14*mm,bottomMargin=14*mm)
     styles=getSampleStyleSheet()
-    title=ParagraphStyle('title',parent=styles['Title'],fontName='Helvetica-Bold',fontSize=18,leading=22,textColor=colors.HexColor('#123A5A'),alignment=TA_CENTER,spaceAfter=10)
-    h1=ParagraphStyle('h1',parent=styles['Heading1'],fontName='Helvetica-Bold',fontSize=13,textColor=colors.HexColor('#123A5A'),spaceBefore=8,spaceAfter=6)
-    body=ParagraphStyle('body',parent=styles['BodyText'],fontSize=9.2,leading=13,textColor=colors.HexColor('#263746'))
-    note=ParagraphStyle('note',parent=body,fontSize=8.2,textColor=colors.HexColor('#5E6D78'))
-    story=[]
-    story += [Paragraph('REPORTE EJECUTIVO – GESTIÓN INTEGRADA DEL RIESGO DE CONTAMINACIÓN CRUZADA',title),Paragraph('DSS-RCC · Sistema de Apoyo a Decisiones',h1),Paragraph(f'Fecha de generación: {datetime.now().strftime("%d/%m/%Y %H:%M")}',body),Spacer(1,6)]
-    insp=float(f.inspeccionadas.sum()); nc=float(f.no_conformes.sum()); ret=float(f.retrabajo.sum()) if 'retrabajo' in f else 0
-    crit=critical(f); sig=signals(f)
-    kdata=[['Indicador','Resultado'],['Registros analizados',fmt_int(len(f))],['Unidades inspeccionadas',fmt_int(insp)],['No conformes',f'{fmt_int(nc)} ({pct(nc,insp):.2f}%)'],['Retrabajo',f'{fmt_int(ret)} ({pct(ret,insp):.2f}%)']]
-    t=Table(kdata,colWidths=[82*mm,80*mm]);t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#123A5A')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#AAB7C2')),('FONTSIZE',(0,0),(-1,-1),8.5),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F4F7FA')]),('VALIGN',(0,0),(-1,-1),'MIDDLE')]))
-    story += [t,Spacer(1,8),Paragraph('1. Resumen ejecutivo',h1)]
-    if crit is not None:
-        story.append(Paragraph(f"El proceso con mayor proporción observada de no conformidad es <b>{crit.proceso}</b> ({crit.Porcentaje_NC:.2f}%). Esta priorización identifica dónde concentrar la investigación; no demuestra por sí sola contaminación cruzada ni causalidad.",body))
-    if not sig.empty:
-        story.append(Paragraph(f"La señal operacional dominante es <b>{sig.iloc[0].Señal}</b>. El DSS la utiliza como evidencia de priorización y propone una hipótesis a verificar antes de cerrar acciones correctivas.",body))
-    story += [Paragraph('2. Diagnóstico por proceso',h1)]
-    g=process_summary(f)
-    pdata=[['Proceso','Inspeccionadas','No conformes','% NC']]+[[r.proceso,fmt_int(r.Inspeccionadas),fmt_int(r.No_conformes),f'{r.Porcentaje_NC:.2f}%'] for _,r in g.iterrows()]
-    pt=Table(pdata,colWidths=[55*mm,38*mm,38*mm,28*mm]);pt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#2563EB')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#B7C2CC')),('FONTSIZE',(0,0),(-1,-1),8),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F6F8FA')])]))
-    story += [pt,Spacer(1,7),Paragraph('3. Señales priorizadas y acciones sugeridas',h1)]
-    if sig.empty: story.append(Paragraph('No se encontraron señales operacionales cuantificables en las columnas opcionales disponibles.',body))
-    else:
-        sdata=[['Prior.','Señal','Cant.','Frecuencia relativa','Acción sugerida']]
-        for _,r in sig.head(6).iterrows(): sdata.append([str(r.Prioridad),r.Señal,fmt_int(r.Cantidad),f"{r['Frecuencia_relativa_%']:.1f}%",Paragraph(str(r['Acción sugerida']),note)])
-        stbl=Table(sdata,colWidths=[13*mm,37*mm,18*mm,30*mm,67*mm]);stbl.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0E7490')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#B7C2CC')),('FONTSIZE',(0,0),(-1,-1),7.5),('VALIGN',(0,0),(-1,-1),'TOP')]))
-        story.append(stbl)
-    story += [PageBreak(),Paragraph('4. Arquitectura metodológica integrada',h1),Paragraph('<b>Datos → SIPOC/VSM → diagnóstico → preevaluación FMEA → DMAIC/Ishikawa → Lean/SPC → decisión → validación → reevaluación.</b>',body),Spacer(1,5)]
-    story.append(Paragraph('El DSS integra herramientas de Ingeniería Industrial en una secuencia trazable. Las señales observadas orientan la investigación; las causas raíz, la inocuidad, los criterios FMEA S/O/D y los límites de especificación requieren validación metodológica y/o técnica.',body))
-    story += [Paragraph('5. DMAIC ejecutivo',h1)]
-    cp='proceso observado' if crit is None else str(crit.proceso); sn='señal prioritaria' if sig.empty else str(sig.iloc[0].Señal)
-    dma=[['Fase','Salida automática'],['Definir',f'Priorizar {cp}.'],['Medir',f'{fmt_int(insp)} inspeccionadas; {pct(nc,insp):.2f}% NC.'],['Analizar',f'Investigar {sn} mediante hipótesis 6M y evidencia del proceso.'],['Mejorar','Implementar acción sobre causa confirmada; estandarizar y reducir desperdicio/manipulación cuando corresponda.'],['Controlar','Seguimiento por lote/proceso, SPC cuando aplique y comparación antes/después con diseño válido.']]
-    dt=Table(dma,colWidths=[30*mm,135*mm]);dt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#6D28D9')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#B7C2CC')),('FONTSIZE',(0,0),(-1,-1),8),('VALIGN',(0,0),(-1,-1),'TOP')]))
-    story += [dt,Paragraph('6. Ishikawa 6M – hipótesis a verificar',h1)]
-    ish=[['6M','Hipótesis'],['Mano de obra','Capacitación, fatiga, prácticas'],['Método','Estandarización, secuencia, manipulación'],['Maquinaria','Sellado, mantenimiento, condición'],['Materiales','Envases, embalaje, contacto'],['Medio ambiente','Limpieza, temperatura, flujo'],['Medición','Registros, inspección, trazabilidad']]
-    it=Table(ish,colWidths=[42*mm,123*mm]);it.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#123A5A')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#B7C2CC')),('FONTSIZE',(0,0),(-1,-1),8)]));story.append(it)
-    story += [Paragraph('7. Matriz de evidencia, nivel de soporte y decisión',h1)]
-    # La matriz separa disponibilidad de evidencia, alcance y uso en la decisión.
-    lab_col='resultado_laboratorio' in f
-    lab_nc=0
-    if lab_col:
-        lab_txt=f['resultado_laboratorio'].fillna('').astype(str).str.strip().str.lower()
-        lab_nc=int(lab_txt.str.contains('no conforme',regex=False).sum())
-    vsm_ok=all(c in f for c in ['tiempo_ciclo_min','tiempo_espera_min','tiempo_va_min'])
-    spc_cols=[c for c in ['temperatura_c','tiempo_ciclo_min'] if c in f and pd.to_numeric(f[c],errors='coerce').notna().sum()>=2]
-    periodo_ok='periodo' in f and f['periodo'].fillna('').astype(str).str.strip().ne('').any()
-    ev=[
-        ['Evidencia / herramienta','Estado','Resultado verificable','Uso en la decisión'],
-        ['Datos operacionales','DISPONIBLE',f'{len(f)} registros; {fmt_int(insp)} unidades inspeccionadas; {pct(nc,insp):.2f}% NC','Base cuantitativa para priorizar proceso y señales'],
-        ['Laboratorio','DISPONIBLE' if lab_col else 'NO DISPONIBLE',f'{lab_nc} resultado(s) No conforme registrado(s)' if lab_col else 'No se incluyó resultado de laboratorio','Complementa la verificación analítica; interpretar según ensayo y criterio aplicable'],
-        ['SIPOC / flujo','GENERADO','Secuencia del proceso contextualizada','Ubica etapas, entradas/salidas y puntos donde investigar'],
-        ['VSM cuantitativo','DISPONIBLE' if vsm_ok else 'PARCIAL','Tiempos VA, espera y ciclo disponibles' if vsm_ok else 'Faltan una o más columnas de tiempo','Cuantifica flujo y desperdicio solo cuando existen tiempos suficientes'],
-        ['FMEA S/O/D','PENDIENTE','Escala S/O/D no validada en el archivo','No calcula NPR hasta contar con criterios de puntuación validados'],
-        ['SPC','DISPONIBLE' if spc_cols else 'NO DISPONIBLE',('Variable(s): '+', '.join(spc_cols)) if spc_cols else 'No hay serie continua suficiente','Monitorea estabilidad estadística; límites de control no son límites de especificación'],
-        ['Validación antes/después','DISPONIBLE' if periodo_ok else 'PENDIENTE','Periodo Antes/Después identificado' if periodo_ok else 'Falta columna Periodo con Antes/Después','Evalúa cambio observado sin atribuir causalidad automáticamente']
-    ]
-    # Paragraphs permiten ajuste de texto y evitan que la tabla se desborde.
-    evp=[[Paragraph(str(x), note if r>0 else ParagraphStyle('th',parent=note,textColor=colors.white,fontName='Helvetica-Bold',fontSize=7.2,leading=8.5)) for x in row] for r,row in enumerate(ev)]
-    et=Table(evp,colWidths=[37*mm,27*mm,54*mm,47*mm],repeatRows=1)
-    et.setStyle(TableStyle([
-        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0F766E')),('TEXTCOLOR',(0,0),(-1,0),colors.white),
-        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#B7C2CC')),
-        ('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),
-        ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
-        ('BACKGROUND',(0,1),(-1,-1),colors.HexColor('#F8FAFC')),
-        ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.HexColor('#F8FAFC'),colors.white])
-    ]))
-    story += [et,Spacer(1,8),Paragraph('<b>Lectura para la decisión:</b> el DSS distingue entre evidencia disponible, evidencia parcial y elementos pendientes de validación. Una señal operacional permite priorizar la investigación, pero no confirma por sí sola contaminación cruzada ni una causa raíz.',note),Spacer(1,6),Paragraph('<b>Criterio de cierre:</b> la acción correctiva debe aprobarse con revisión del responsable de Calidad/Inocuidad y reevaluarse con datos posteriores a la intervención.',note),Spacer(1,18),HRFlowable(width='70%',thickness=.6,color=colors.grey),Paragraph(f'Responsable de Calidad / Inocuidad: {responsable.strip() if responsable.strip() else "_______________________________"}',body),Paragraph('Fecha de revisión: ____ / ____ / ______',body)]
-    # 8. COMPARACIÓN ANTES / DESPUÉS Y DECISIÓN GERENCIAL
-    story += [PageBreak(), Paragraph('8. Resultado Antes / Después y decisión gerencial', h1)]
-    if fa is not None and not fa.empty:
-        mb=metric_pack(f); ma=metric_pack(fa)
-        comp_rows=[['Indicador','Antes','Después','Reducción relativa']]
-        for indicador in ['% NC','% Retrabajo','Defecto sellado','Incid. higiene','Incid. limpieza','Incid. manipulación']:
-            b=float(mb.get(indicador,0) or 0); a=float(ma.get(indicador,0) or 0); rr=reduction_pct(b,a)
-            comp_rows.append([indicador,f'{b:.2f}',f'{a:.2f}','N/D' if pd.isna(rr) else f'{rr:.2f}%'])
-        ct=Table(comp_rows,colWidths=[48*mm,32*mm,32*mm,48*mm],repeatRows=1)
-        ct.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#2563EB')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#B7C2CC')),('FONTSIZE',(0,0),(-1,-1),8),('VALIGN',(0,0),(-1,-1),'TOP'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F6F8FA')])]))
-        story += [ct,Spacer(1,8)]
-
-        bnc=float(mb.get('% NC',0) or 0); anc=float(ma.get('% NC',0) or 0); rnc=reduction_pct(bnc,anc)
-        crit_after=critical(fa); sig_after=signals(fa)
-        proc_after='No determinado' if crit_after is None else str(crit_after.proceso)
-        proc_after_nc=np.nan if crit_after is None else float(crit_after.Porcentaje_NC)
-        signal_after='Sin señal cuantificable' if sig_after.empty else str(sig_after.iloc[0].Señal)
-        action_after='Mantener vigilancia de los indicadores y documentar la revisión.' if sig_after.empty else str(sig_after.iloc[0]['Acción sugerida'])
-
-        if pd.isna(rnc):
-            estado='EVIDENCIA INSUFICIENTE PARA CALCULAR REDUCCIÓN RELATIVA'
-            decision='No cerrar la intervención. Verificar la línea base y recopilar datos comparables antes de aprobar una decisión definitiva.'
-        elif rnc >= 50:
-            estado='MEJORA IMPORTANTE OBSERVADA'
-            decision='Mantener y estandarizar las mejoras implementadas, reforzando el control del proceso crítico residual y verificando que el resultado se sostenga en el periodo de seguimiento.'
-        elif rnc > 0:
-            estado='MEJORA OBSERVADA, AÚN REQUIERE SEGUIMIENTO'
-            decision='Continuar la intervención y reforzar las acciones sobre el proceso y la señal prioritaria hasta demostrar estabilidad y cumplimiento del objetivo definido.'
-        elif rnc == 0:
-            estado='SIN CAMBIO OBSERVADO'
-            decision='Revisar la intervención, volver a la fase Analizar de DMAIC y verificar las hipótesis de causa antes de mantener o modificar las acciones.'
+    title=ParagraphStyle('rtitle',parent=styles['Title'],fontName='Helvetica-Bold',fontSize=17,leading=21,textColor=colors.HexColor('#0B2948'),alignment=TA_CENTER,spaceAfter=8)
+    h1=ParagraphStyle('rh1',parent=styles['Heading1'],fontName='Helvetica-Bold',fontSize=12.5,leading=15,textColor=colors.HexColor('#0B5D7A'),spaceBefore=9,spaceAfter=5)
+    body=ParagraphStyle('rbody',parent=styles['BodyText'],fontSize=9,leading=12.5,textColor=colors.HexColor('#263746'))
+    note=ParagraphStyle('rnote',parent=body,fontSize=8,textColor=colors.HexColor('#5D6B78'))
+    good=ParagraphStyle('rgood',parent=body,textColor=colors.HexColor('#0F6B46'))
+    warn=ParagraphStyle('rwarn',parent=body,textColor=colors.HexColor('#9A5B00'))
+    story=[Paragraph('REPORTE GERENCIAL DSS-RCC',title),Paragraph('Gestión Integrada del Riesgo de Contaminación Cruzada',ParagraphStyle('sub',parent=title,fontSize=12,textColor=colors.HexColor('#365B78'))),Paragraph(f'Generado: {datetime.now().strftime("%d/%m/%Y %H:%M")}',note),Spacer(1,5)]
+    mb=metric_pack(before); ma=metric_pack(after) if after is not None else None
+    crit=critical(before); sig=signals(before); lean=lean_summary(before,after) if after is not None else lean_summary(before,None)
+    fb=fmea_summary(before); fa=fmea_summary(after) if after is not None else pd.DataFrame()
+    npr_b=float(fb.NPR.max()) if not fb.empty else np.nan; npr_a=float(fa.NPR.max()) if not fa.empty else np.nan
+    # Executive table
+    k=[['Indicador','ANTES','DESPUÉS','Mejora / cambio']]
+    items=[('% No conformidad',mb['% NC'], ma['% NC'] if ma else np.nan, '%'),('Retrabajos',mb['Retrabajos'],ma['Retrabajos'] if ma else np.nan,'n'),('Eventos de riesgo',mb['Eventos de riesgo'],ma['Eventos de riesgo'] if ma else np.nan,'n'),('Eventos / 100',mb['Eventos / 100'],ma['Eventos / 100'] if ma else np.nan,'%'),('NPR máximo',npr_b,npr_a,'npr')]
+    for lab,b,a,typ in items:
+        if pd.isna(a): av='N/D'; rv='N/D'
         else:
-            estado='DETERIORO DEL INDICADOR'
-            decision='Priorizar acción correctiva. Revisar inmediatamente la intervención y las condiciones del proceso, verificar causas y establecer seguimiento reforzado antes del cierre.'
-
-        story += [Paragraph('9. Recomendación automática para la toma de decisiones',h1),
-                  Paragraph(f'<b>Estado:</b> {estado}',body),
-                  Paragraph(f'<b>Resultado principal:</b> la no conformidad pasó de {bnc:.2f}% a {anc:.2f}%'+(' (reducción relativa no calculable).' if pd.isna(rnc) else f', equivalente a una reducción relativa de {rnc:.2f}%.'),body),
-                  Paragraph(f'<b>Proceso crítico residual:</b> {proc_after}'+('' if pd.isna(proc_after_nc) else f' ({proc_after_nc:.2f}% NC).'),body),
-                  Paragraph(f'<b>Señal prioritaria después de la intervención:</b> {signal_after}.',body),
-                  Paragraph(f'<b>DECISIÓN RECOMENDADA POR EL DSS-RCC:</b> {decision}',body),
-                  Paragraph(f'<b>Acción prioritaria sugerida:</b> {action_after}',body)]
-
-        acciones=[['Prioridad','Acción','Responsable sugerido','Indicador de control','Criterio de seguimiento'],
-                  ['1',action_after,'Calidad / Inocuidad','% NC y señal prioritaria','Verificar tendencia en el siguiente periodo'],
-                  ['2',f'Investigar la causa de {signal_after} mediante evidencia e Ishikawa 6M','Calidad + Operaciones','Evidencia de causa / recurrencia','No cerrar causa raíz sin verificación'],
-                  ['3',f'Reforzar control en {proc_after}','Operaciones','% NC por proceso','Comparar con línea base y meta'],
-                  ['4','Aplicar SPC cuando exista variable continua y límites válidos','Calidad / Proceso','Puntos fuera de control / estabilidad','Reaccionar ante señales especiales']]
-        ap=[[Paragraph(str(x), note if i>0 else ParagraphStyle('th2',parent=note,textColor=colors.white,fontName='Helvetica-Bold',fontSize=7,leading=8)) for x in row] for i,row in enumerate(acciones)]
-        at=Table(ap,colWidths=[15*mm,55*mm,32*mm,31*mm,32*mm],repeatRows=1)
-        at.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0F766E')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#B7C2CC')),('VALIGN',(0,0),(-1,-1),'TOP'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.HexColor('#F8FAFC'),colors.white])]))
-        story += [Paragraph('10. Plan de acción para ejecución y seguimiento',h1),at,Spacer(1,8),
-                  Paragraph('<b>Criterio gerencial:</b> una mejora descriptiva Antes/Después respalda la continuidad o ajuste de la intervención, pero no demuestra por sí sola causalidad. La causa raíz y el cierre de la acción deben ser validados por el responsable de Calidad/Inocuidad.',note),
-                  Paragraph('<b>Regla de reevaluación:</b> si el indicador vuelve a aumentar, aparecen nuevas señales críticas o el proceso pierde estabilidad, reabrir la fase Analizar de DMAIC y revisar el plan de mejora.',note)]
+            av=f'{a:.2f}' if typ=='%' else fmt_int(a)
+            r=reduction_pct(b,a); rv='N/D' if pd.isna(r) else f'{r:.2f}%'
+        bv=f'{b:.2f}' if typ=='%' else fmt_int(b)
+        k.append([lab,bv,av,rv])
+    kt=Table(k,colWidths=[58*mm,34*mm,34*mm,42*mm],repeatRows=1)
+    kt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0B2948')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#C7D2DC')),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F3F7FA')]),('FONTSIZE',(0,0),(-1,-1),8.3),('ALIGN',(1,1),(-1,-1),'CENTER'),('VALIGN',(0,0),(-1,-1),'MIDDLE')]))
+    story += [Paragraph('1. Resumen ejecutivo',h1),kt,Spacer(1,7)]
+    if after is not None:
+        rnc=reduction_pct(mb['% NC'],ma['% NC']); rev=reduction_pct(mb['Eventos / 100'],ma['Eventos / 100']); rret=reduction_pct(mb['Retrabajos'],ma['Retrabajos'])
+        txt=f"La no conformidad pasó de <b>{mb['% NC']:.2f}%</b> a <b>{ma['% NC']:.2f}%</b>"
+        txt += (f", equivalente a una reducción relativa de <b>{rnc:.2f}%</b>." if not pd.isna(rnc) else '.')
+        txt += f" Los eventos de riesgo cambiaron de <b>{mb['Eventos de riesgo']:.0f}</b> a <b>{ma['Eventos de riesgo']:.0f}</b>"
+        txt += (f" ({rev:.2f}% de reducción en eventos por 100 unidades)." if not pd.isna(rev) else '.')
+        txt += f" Los retrabajos pasaron de <b>{mb['Retrabajos']:.0f}</b> a <b>{ma['Retrabajos']:.0f}</b>"
+        txt += (f" ({rret:.2f}% de reducción)." if not pd.isna(rret) else '.')
+        story.append(Paragraph(txt,good if (not pd.isna(rnc) and rnc>0) else body))
+    else: story.append(Paragraph('El reporte corresponde únicamente a la línea base ANTES. Cargue y ejecute DESPUÉS para cuantificar la mejora.',warn))
+    if crit is not None: story.append(Paragraph(f"El proceso prioritario de la línea base es <b>{crit.proceso}</b>, con <b>{crit.Porcentaje_NC:.2f}%</b> de no conformidad. Debe concentrar la verificación de causas y controles.",body))
+    # Process comparison
+    story.append(Paragraph('2. Resultados por proceso',h1))
+    if after is not None:
+        cp=compare_process(before,after).sort_values('Antes',ascending=False)
+        pdata=[['Proceso','% NC Antes','% NC Después','Reducción %']]+[[str(r.proceso),f'{r.Antes:.2f}',f'{r.Después:.2f}' if pd.notna(r.Después) else 'N/D',f'{r["Reducción_%"]:.2f}' if pd.notna(r['Reducción_%']) else 'N/D'] for _,r in cp.iterrows()]
     else:
-        story += [Paragraph('No se ha ejecutado un conjunto de datos DESPUÉS. El DSS puede priorizar riesgos y proponer acciones con la línea base, pero no debe concluir que existió una mejora hasta contar con datos posteriores comparables.',body),
-                  Paragraph('<b>Decisión provisional:</b> ejecutar las acciones priorizadas, definir responsables e indicadores y recopilar el periodo DESPUÉS para evaluar el resultado.',body)]
-
-    story += [Spacer(1,14),HRFlowable(width='70%',thickness=.6,color=colors.grey),
-              Paragraph(f'Aprobación / revisión final: {responsable.strip() if responsable.strip() else "_______________________________"}',body),
-              Paragraph('Decisión humana final:  ☐ Aprobar  ☐ Ajustar  ☐ Rechazar  ☐ Requiere más evidencia',body),
-              Paragraph('Fecha: ____ / ____ / ______',body)]
-
+        g=process_summary(before); pdata=[['Proceso','Inspeccionadas','No conformes','% NC']]+[[str(r.proceso),fmt_int(r.Inspeccionadas),fmt_int(r.No_conformes),f'{r.Porcentaje_NC:.2f}'] for _,r in g.iterrows()]
+    pt=Table(pdata,colWidths=[55*mm,36*mm,36*mm,38*mm],repeatRows=1);pt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1677A8')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#CBD5DF')),('FONTSIZE',(0,0),(-1,-1),8),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F6F9FB')])]))
+    story.append(pt)
+    # FMEA
+    story += [Paragraph('3. Riesgo FMEA automático',h1)]
+    if not fb.empty:
+        story.append(Paragraph(f"NPR máximo ANTES: <b>{npr_b:.0f}</b> ({risk_level(npr_b)})." + (f" NPR máximo DESPUÉS: <b>{npr_a:.0f}</b> ({risk_level(npr_a)}), reducción relativa <b>{reduction_pct(npr_b,npr_a):.2f}%</b>." if after is not None and not pd.isna(npr_a) and not pd.isna(reduction_pct(npr_b,npr_a)) else ''),body))
+        top=fb.head(5)
+        fd=[['Proceso','Fuente','Peligro','S','O','D','NPR']]+[[str(r.get('proceso','')),str(r.get('fuente_riesgo','')),str(r.get('tipo_peligro','')),str(int(r.S)),str(int(r.O)),str(int(r.D)),str(int(r.NPR))] for _,r in top.iterrows()]
+        ft=Table(fd,colWidths=[35*mm,34*mm,28*mm,12*mm,12*mm,12*mm,18*mm],repeatRows=1);ft.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#7C3AED')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#CBD5DF')),('FONTSIZE',(0,0),(-1,-1),7.5),('ALIGN',(3,1),(-1,-1),'CENTER')]))
+        story.append(ft)
+    story.append(Paragraph('La escala S/O/D es algorítmica y debe quedar documentada y validada metodológicamente. El NPR prioriza riesgos; no confirma contaminación por sí solo.',note))
+    # Lean
+    story += [Paragraph('4. Desempeño Lean y reducción de desperdicios',h1)]
+    ld=[['Indicador','Antes','Después','Reducción %']]
+    for _,r in lean.iterrows():
+        ld.append([str(r['Indicador Lean']),f"{r['Antes']:.2f}",('N/D' if pd.isna(r['Después']) else f"{r['Después']:.2f}"),('N/D' if pd.isna(r['Reducción_%']) else f"{r['Reducción_%']:.2f}")])
+    lt=Table(ld,colWidths=[68*mm,32*mm,32*mm,36*mm],repeatRows=1);lt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0F766E')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#CBD5DF')),('FONTSIZE',(0,0),(-1,-1),7.8),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F2FAF8')])]))
+    story.append(lt)
+    # What to improve / how
+    story += [Paragraph('5. Qué mejorar y cómo actuar',h1)]
+    recommendations=[]
+    if crit is not None: recommendations.append(f"<b>Prioridad 1 – {crit.proceso}:</b> revisar el mecanismo de contaminación y los controles asociados al proceso con mayor % de no conformidad de la línea base ({crit.Porcentaje_NC:.2f}%).")
+    if not sig.empty:
+        top=sig.iloc[0]; recommendations.append(f"<b>Prioridad 2 – {top.Señal}:</b> {top['Acción sugerida']} Verificar la hipótesis: {top['Causa potencial a verificar']}")
+    if after is not None:
+        cp=compare_process(before,after)
+        weak=cp.dropna(subset=['Reducción_%']).sort_values('Reducción_%').head(1)
+        if not weak.empty:
+            r=weak.iloc[0]; recommendations.append(f"<b>Prioridad 3 – sostener/mejorar {r.proceso}:</b> presenta la menor reducción relativa de % NC ({r['Reducción_%']:.2f}%). Revisar estandarización, cumplimiento de controles y seguimiento.")
+        lr=lean.dropna(subset=['Reducción_%']).sort_values('Reducción_%')
+        if not lr.empty:
+            r=lr.iloc[0]; recommendations.append(f"<b>Prioridad Lean:</b> el indicador con menor mejora es {r['Indicador Lean']} ({r['Reducción_%']:.2f}%). Definir meta, responsable, fecha y verificación posterior.")
+    for i,x in enumerate(recommendations,1): story.append(Paragraph(f'{i}. {x}',body))
+    story.append(Paragraph('Acciones sugeridas: estandarizar el método, reforzar controles de higiene/limpieza/segregación según la señal observada, reducir manipulaciones y esperas innecesarias, registrar evidencia de ejecución y reevaluar con el mismo criterio de medición.',body))
+    # Validation and limitations
+    story += [Paragraph('6. Interpretación y validación',h1)]
+    story.append(Paragraph('Las reducciones mostradas son comparaciones descriptivas ANTES/DESPUÉS. Para atribuir causalidad a la intervención se requiere un diseño de validación adecuado, consistencia de muestreo, comparabilidad de condiciones y revisión por Calidad/Inocuidad.',note))
+    story.append(Paragraph('Los eventos de riesgo y las no conformidades observadas no equivalen automáticamente a contaminación microbiológica confirmada. Cuando corresponda, la confirmación requiere evidencia analítica o técnica.',note))
+    story += [Spacer(1,12),HRFlowable(width='75%',thickness=.6,color=colors.grey),Paragraph(f'Responsable de Calidad / Inocuidad: {responsable.strip() if responsable.strip() else "_______________________________"}',body),Paragraph('Fecha de revisión: ____ / ____ / ______',body)]
     doc.build(story);buff.seek(0);return buff.getvalue()
 
 # ----------------------------- HEADER -----------------------------
@@ -690,18 +799,18 @@ with tabs[0]:
         c=st.columns(5)
         with c[0]:kpi('INSPECCIONADAS',fmt_int(mb['Inspeccionadas']),'Unidades · ANTES')
         with c[1]:kpi('NO CONFORMIDAD',f"{mb['% NC']:.2f}%",'% de inspeccionadas · ANTES')
-        with c[2]:kpi('RETRABAJO',f"{mb['% Retrabajo']:.2f}%",'% de inspeccionadas · ANTES')
+        with c[2]:kpi('RETRABAJOS',fmt_int(mb['Retrabajos']),'Cantidad observada · ANTES')
         with c[3]:kpi('Proceso prioritario',str(crit.proceso) if crit is not None else 'N/D',f'{crit.Porcentaje_NC:.2f}% NC' if crit is not None else '')
         with c[4]:kpi('Registros',fmt_int(len(f)),'ANTES')
         st.info('Cuando ejecute el Excel DESPUÉS, estos mismos gráficos incorporarán DESPUÉS y REDUCCIÓN automáticamente.')
     else:
-        red_nc=reduction_pct(mb['% NC'],ma['% NC']); red_ret=reduction_pct(mb['% Retrabajo'],ma['% Retrabajo'])
+        red_nc=reduction_pct(mb['% NC'],ma['% NC']); red_ret=reduction_pct(mb['Retrabajos'],ma['Retrabajos'])
         c=st.columns(6)
         with c[0]:kpi('NC · ANTES',f"{mb['% NC']:.2f}%",'% de inspeccionadas')
         with c[1]:kpi('NC · DESPUÉS',f"{ma['% NC']:.2f}%",'% de inspeccionadas')
         with c[2]:kpi('REDUCCIÓN NC',('N/D' if pd.isna(red_nc) else f'{red_nc:.2f}%'),'Cambio relativo')
-        with c[3]:kpi('RETRABAJO · ANTES',f"{mb['% Retrabajo']:.2f}%",'% de inspeccionadas')
-        with c[4]:kpi('RETRABAJO · DESPUÉS',f"{ma['% Retrabajo']:.2f}%",'% de inspeccionadas')
+        with c[3]:kpi('RETRABAJOS · ANTES',fmt_int(mb['Retrabajos']),'Cantidad observada')
+        with c[4]:kpi('RETRABAJOS · DESPUÉS',fmt_int(ma['Retrabajos']),'Cantidad observada')
         with c[5]:kpi('REDUCCIÓN RETRABAJO',('N/D' if pd.isna(red_ret) else f'{red_ret:.2f}%'),'Cambio relativo')
         st.caption(f'Registros filtrados: ANTES {len(f)} · DESPUÉS {len(fa)}')
 
@@ -712,9 +821,14 @@ with tabs[0]:
             fig=px.bar(g,x='proceso',y='Porcentaje_NC',text=g.Porcentaje_NC.map(lambda x:f'{x:.2f}%'),color='Porcentaje_NC',color_continuous_scale=['#22C55E','#FBBF24','#FF4D5A'])
             fig.update_traces(textposition='outside');st.plotly_chart(plot_layout(fig,430,'No conformidad por proceso · ANTES'),width='stretch')
     elif cp is not None and not cp.empty:
-        long=cp.melt(id_vars='proceso',value_vars=['Antes','Después','Reducción_%'],var_name='Escenario',value_name='Valor')
-        fig=px.bar(long,x='proceso',y='Valor',color='Escenario',barmode='group',text_auto='.2f',color_discrete_map={'Antes':CYAN,'Después':GREEN,'Reducción %':AMBER,'Reducción_%':AMBER})
-        st.plotly_chart(plot_layout(fig,440,'No conformidad por proceso · Antes / Después / Reducción %'),width='stretch')
+        long=cp.melt(id_vars='proceso',value_vars=['Antes','Después'],var_name='Escenario',value_name='% NC')
+        fig=px.bar(long,x='proceso',y='% NC',color='Escenario',barmode='group',text_auto='.2f',color_discrete_map={'Antes':CYAN,'Después':GREEN})
+        st.plotly_chart(plot_layout(fig,440,'No conformidad por proceso · Antes vs. Después'),width='stretch')
+        red=cp.dropna(subset=['Reducción_%']).copy()
+        if not red.empty:
+            fig2=px.bar(red,x='proceso',y='Reducción_%',text_auto='.1f',color='Reducción_%',color_continuous_scale=['#F97316','#FBBF24','#22C55E'])
+            fig2.update_traces(texttemplate='%{y:.1f}%',textposition='outside')
+            st.plotly_chart(plot_layout(fig2,360,'Reducción relativa de no conformidad por proceso (%)'),width='stretch')
 
     sb=signals(f)
     if fa is None:
@@ -723,8 +837,11 @@ with tabs[0]:
     else:
         cs=compare_signals(f,fa)
         if not cs.empty:
-            lg=cs.melt(id_vars='Señal',value_vars=['Antes','Después','Reducción_%'],var_name='Escenario',value_name='Valor');lg['Escenario']=lg['Escenario'].replace({'Reducción_%':'Reducción %'})
-            fig=px.bar(lg,x='Señal',y='Valor',color='Escenario',barmode='group',text_auto='.1f',color_discrete_map={'Antes':CYAN,'Después':GREEN,'Reducción %':AMBER,'Reducción_%':AMBER});st.plotly_chart(plot_layout(fig,430,'Señales operacionales · Antes / Después / Reducción %'),width='stretch')
+            lg=cs.melt(id_vars='Señal',value_vars=['Antes','Después'],var_name='Escenario',value_name='Cantidad')
+            fig=px.bar(lg,x='Señal',y='Cantidad',color='Escenario',barmode='group',text_auto='.0f',color_discrete_map={'Antes':CYAN,'Después':GREEN});st.plotly_chart(plot_layout(fig,430,'Señales operacionales · Antes vs. Después'),width='stretch')
+            rr=cs.dropna(subset=['Reducción_%']).copy()
+            if not rr.empty:
+                fig2=px.bar(rr,x='Señal',y='Reducción_%',text_auto='.1f',color='Reducción_%',color_continuous_scale=['#F97316','#FBBF24','#22C55E']);fig2.update_traces(texttemplate='%{y:.1f}%',textposition='outside');st.plotly_chart(plot_layout(fig2,360,'Reducción relativa de señales operacionales (%)'),width='stretch')
 
     if 'fecha' in f and f.fecha.notna().any():
         tb=f.dropna(subset=['fecha']).groupby('fecha',as_index=False).agg(I=('inspeccionadas','sum'),N=('no_conformes','sum'));tb['NC']=np.where(tb.I>0,100*tb.N/tb.I,0);tb['Serie']='Antes'
@@ -742,30 +859,42 @@ with tabs[1]:
     f,fa=filters_pair(d,d_after,'flow')
     st.subheader('SIPOC visual');st.plotly_chart(sipoc_figure(f),width='stretch')
     st.subheader('Flujo del proceso con criticidad observada');st.plotly_chart(process_flow_figure(f),width='stretch')
-    vcols=['tiempo_ciclo_min','tiempo_espera_min','tiempo_va_min']
+    vcols=['tiempo_ciclo_min','tiempo_espera_min']
     if all(c in f for c in vcols):
         vg=f.groupby('proceso',as_index=False)[vcols].mean();
-        fig=go.Figure();fig.add_bar(x=vg.proceso,y=vg.tiempo_va_min,name='VA · Antes',marker_color=CYAN);fig.add_bar(x=vg.proceso,y=vg.tiempo_espera_min,name='Espera · Antes',marker_color=AMBER);fig.add_bar(x=vg.proceso,y=vg.tiempo_ciclo_min,name='Ciclo · Antes',marker_color=PURPLE);
+        fig=go.Figure();fig.add_bar(x=vg.proceso,y=vg.tiempo_espera_min,name='Espera · Antes',marker_color=AMBER);fig.add_bar(x=vg.proceso,y=vg.tiempo_ciclo_min,name='Ciclo · Antes',marker_color=CYAN);
         if fa is not None and all(c in fa for c in vcols):
-            va=fa.groupby('proceso',as_index=False)[vcols].mean();fig.add_bar(x=va.proceso,y=va.tiempo_va_min,name='VA · Después',marker_color=GREEN);fig.add_bar(x=va.proceso,y=va.tiempo_espera_min,name='Espera · Después',marker_color=ORANGE);fig.add_bar(x=va.proceso,y=va.tiempo_ciclo_min,name='Ciclo · Después',marker_color=RED)
+            va=fa.groupby('proceso',as_index=False)[vcols].mean();fig.add_bar(x=va.proceso,y=va.tiempo_espera_min,name='Espera · Después',marker_color=ORANGE);fig.add_bar(x=va.proceso,y=va.tiempo_ciclo_min,name='Ciclo · Después',marker_color=GREEN)
         fig.update_layout(barmode='group');st.plotly_chart(plot_layout(fig,410,'VSM cuantitativo · Antes / Después'),width='stretch')
-    else: st.info('Para cuantificar VSM agregue opcionalmente Tiempo_Ciclo_min, Tiempo_Espera_min y Tiempo_VA_min. El flujo SIPOC/VSM visual ya se genera con los datos disponibles.')
+    else: st.info('Para cuantificar VSM se requieren Tiempo_Ciclo_min y Tiempo_Espera_min. El flujo SIPOC/VSM visual ya se genera con los datos disponibles.')
     footer()
 
 # FMEA
 with tabs[2]:
-    st.header('Riesgos y preevaluación FMEA')
-    f,fa=filters_pair(d,d_after,'fmea');sig=signals(f)
-    st.markdown('<div class="callout"><b>Separación metodológica:</b> el DSS prioriza señales observadas. S/O/D no se inventan; el NPR se habilita solo con escala validada.</div>',unsafe_allow_html=True)
-    if fa is None:
-        if sig.empty: st.info('No hay señales opcionales cuantificables para priorizar.')
-        else:
-            st.dataframe(sig,width='stretch',hide_index=True);fig=px.bar(sig.sort_values('Cantidad'),x='Cantidad',y='Señal',orientation='h',color='Frecuencia_relativa_%',text='Cantidad');st.plotly_chart(plot_layout(fig,390,'Priorización observada · ANTES'),width='stretch')
+    st.header('Riesgos y FMEA automático · S/O/D calculados por el DSS')
+    f,fa=filters_pair(d,d_after,'fmea')
+    st.markdown('<div class="callout"><b>FMEA automatizado:</b> el inspector registra hechos observables. El DSS calcula S, O y D mediante reglas explícitas. O usa eventos por 100 unidades; S usa peligro/exposición/contacto/alcance/barrera; D usa tipo/cobertura/momento/registro del control.</div>',unsafe_allow_html=True)
+    st.caption('Escala algorítmica DSS-RCC v18 (1–5). Debe documentarse y validarse metodológicamente antes de declarar el NPR como escala definitiva de la investigación.')
+    fb=fmea_summary(f)
+    if fb.empty:
+        st.error('No fue posible calcular FMEA. Verifique que el Excel corresponda a la plantilla universal nueva.')
     else:
-        cs=compare_signals(f,fa)
-        st.dataframe(cs.round(2),width='stretch',hide_index=True)
-        lg=cs.melt(id_vars='Señal',value_vars=['Antes','Después','Reducción_%'],var_name='Escenario',value_name='Valor');lg['Escenario']=lg['Escenario'].replace({'Reducción_%':'Reducción %'});fig=px.bar(lg,x='Valor',y='Señal',orientation='h',color='Escenario',barmode='group',text_auto='.1f',color_discrete_map={'Antes':CYAN,'Después':GREEN,'Reducción %':AMBER});fig.update_traces(textfont=dict(color='white',size=13));st.plotly_chart(plot_layout(fig,470,'Señales FMEA asistidas · Antes / Después / Reducción %'),width='stretch')
-    st.markdown('<div class="warnbox"><b>FMEA definitivo:</b> S × O × D requiere criterios aprobados. La comparación observada no sustituye el NPR.</div>',unsafe_allow_html=True)
+        a=st.columns(4)
+        with a[0]: kpi('NPR máximo · Antes',fmt_int(fb.NPR.max()),risk_level(fb.NPR.max()))
+        with a[1]: kpi('Eventos · Antes',fmt_int(fb.Eventos.sum()),'Situaciones observadas')
+        with a[2]: kpi('Eventos / 100',f'{100*fb.Eventos.sum()/fb.Inspeccionadas.sum():.2f}' if fb.Inspeccionadas.sum()>0 else '0','Frecuencia global')
+        with a[3]: kpi('Procesos evaluados',fmt_int(fb.proceso.nunique()),'Cobertura FMEA')
+        st.subheader('FMEA calculado · ANTES'); st.dataframe(fb.round(2),width='stretch',hide_index=True)
+        fig=px.bar(fb.head(15).sort_values('NPR'),x='NPR',y='proceso',orientation='h',color='Nivel',text='NPR',hover_data=['S','O','D','Eventos_100'])
+        st.plotly_chart(plot_layout(fig,440,'Priorización FMEA automática · ANTES'),width='stretch')
+        if fa is not None:
+            fba=fmea_summary(fa); st.subheader('FMEA calculado · DESPUÉS'); st.dataframe(fba.round(2),width='stretch',hide_index=True)
+            cmp=compare_fmea(f,fa); st.subheader('Comparación por proceso · ANTES / DESPUÉS'); st.dataframe(cmp.round(2),width='stretch',hide_index=True)
+            if not cmp.empty:
+                lg=cmp.melt(id_vars='proceso',value_vars=['NPR_Antes','NPR_Después'],var_name='Escenario',value_name='NPR'); lg['Escenario']=lg['Escenario'].replace({'NPR_Antes':'Antes','NPR_Después':'Después'})
+                fig=px.bar(lg,x='proceso',y='NPR',color='Escenario',barmode='group',text_auto='.0f',color_discrete_map={'Antes':CYAN,'Después':GREEN}); st.plotly_chart(plot_layout(fig,450,'NPR por proceso · Antes vs Después'),width='stretch')
+    with st.expander('Ver reglas automáticas S / O / D'):
+        st.markdown('**Ocurrencia (O):** <=1 evento/100 = 1; >1-3 = 2; >3-5 = 3; >5-10 = 4; >10 = 5.\n\n**Severidad (S):** usa exposición, contacto, alcance, peligro, barrera posterior y liberación; resultado 1-5.\n\n**Detección (D):** usa tipo de control, cobertura, momento y registro; 1 = fácil de detectar y 5 = difícil de detectar.')
     footer()
 
 # DMAIC ISHIKAWA
@@ -773,7 +902,7 @@ with tabs[3]:
     st.header('DMAIC + Ishikawa ejecutivo')
     f,fa=filters_pair(d,d_after,'dmaic');st.plotly_chart(dmaic_figure(f),width='stretch')
     if fa is not None:
-        cc=comparison_long(f,fa);st.dataframe(cc[cc.Indicador.isin(['% NC','% Retrabajo'])].round(2),width='stretch',hide_index=True)
+        cc=comparison_long(f,fa);st.dataframe(cc[cc.Indicador.isin(['% NC','Retrabajos','Eventos de riesgo','Eventos / 100'])].round(2),width='stretch',hide_index=True)
     st.subheader('Ishikawa 6M · hipótesis a verificar, no causas confirmadas')
     st.plotly_chart(ishikawa_figure(f), width='stretch', config={'staticPlot': True, 'displayModeBar': False})
     st.caption('La señal prioritaria orienta la investigación. La causa raíz debe confirmarse con evidencia del proceso.')
@@ -782,19 +911,47 @@ with tabs[3]:
 # LEAN
 with tabs[4]:
     st.header('Lean · reducción de desperdicio y exposición operacional')
-    f,fa=filters_pair(d,d_after,'lean')
-    st.markdown('<div class="callout"><b>Objetivo Lean:</b> reducir retrabajos, esperas, movimientos, manipulación innecesaria y variabilidad del método.</div>',unsafe_allow_html=True)
-    cols=[('Defectos / retrabajo','retrabajo'),('Movimiento / manipulación','incid_manipulacion'),('Limpieza / cambio','incid_limpieza'),('Espera','tiempo_espera_min')]
-    rows=[]
-    for name,col in cols:
-        if col in f:
-            b=float(f[col].fillna(0).sum());a=float(fa[col].fillna(0).sum()) if fa is not None and col in fa else np.nan
-            rows.append([name,b,a,reduction_pct(b,a) if fa is not None else np.nan])
-    if rows:
-        w=pd.DataFrame(rows,columns=['Desperdicio / condición','Antes','Después','Reducción_%']);st.dataframe(w.round(2),width='stretch',hide_index=True)
-        vals=['Antes'] if fa is None else ['Antes','Después','Reducción_%'];lg=w.melt(id_vars='Desperdicio / condición',value_vars=vals,var_name='Escenario',value_name='Valor');fig=px.bar(lg,x='Valor',y='Desperdicio / condición',orientation='h',color='Escenario',barmode='group',text_auto='.1f',color_discrete_map={'Antes':CYAN,'Después':GREEN,'Reducción %':AMBER,'Reducción_%':AMBER});st.plotly_chart(plot_layout(fig,390,'Focos Lean · Antes / Después / Reducción %'),width='stretch')
-    else:st.info('Agregue columnas opcionales de retrabajo, manipulación, limpieza o tiempos para ampliar el análisis Lean.')
-    st.markdown('<div class="goodbox"><b>Principio de decisión:</b> una reducción positiva es descriptiva. La causa y el efecto de la intervención deben validarse con el diseño del estudio.</div>',unsafe_allow_html=True)
+    f,fa=filters_pair_lean(d,d_after,'lean')
+    st.markdown('<div class="callout"><b>Objetivo Lean:</b> medir y reducir exposición, esperas, manipulaciones, retrabajos y no conformidades sin confundir estos indicadores con el NPR del FMEA.</div>',unsafe_allow_html=True)
+
+    required_lean=['tiempo_ciclo_min','numero_manipulaciones','numero_retrabajos','tiempo_espera_min']
+    present=[c for c in required_lean if c in f.columns]
+    missing=[c for c in required_lean if c not in f.columns]
+
+    w=lean_summary(f,fa)
+    if not w.empty:
+        st.subheader('Indicadores Lean · ANTES vs. DESPUÉS')
+        st.dataframe(w.round(2),width='stretch',hide_index=True)
+        if fa is not None:
+            plot=w.dropna(subset=['Después']).copy()
+            if not plot.empty:
+                lg=plot.melt(id_vars='Indicador Lean',value_vars=['Antes','Después'],var_name='Escenario',value_name='Valor')
+                fig=px.bar(lg,x='Valor',y='Indicador Lean',orientation='h',color='Escenario',barmode='group',text_auto='.2f',color_discrete_map={'Antes':CYAN,'Después':GREEN})
+                st.plotly_chart(plot_layout(fig,430,'Indicadores Lean · Antes / Después'),width='stretch')
+                red=plot[['Indicador Lean','Reducción_%']].dropna()
+                if not red.empty:
+                    fig2=px.bar(red,x='Reducción_%',y='Indicador Lean',orientation='h',text_auto='.1f')
+                    fig2.add_vline(x=0,line_dash='dash',line_color='#9FB3C8')
+                    st.plotly_chart(plot_layout(fig2,380,'Reducción Lean (%) · positivo = mejora'),width='stretch')
+
+    if missing:
+        st.warning('Para completar el análisis Lean cuantitativo agregue en ANTES y DESPUÉS estas columnas: ' + ' · '.join(missing))
+    else:
+        st.success('Las 4 variables Lean cuantitativas están disponibles: tiempo de ciclo, manipulaciones, retrabajos y tiempo de espera.')
+
+    # Lectura ejecutiva automática
+    if fa is not None and not w.empty:
+        valid=w.dropna(subset=['Reducción_%'])
+        improved=valid[valid['Reducción_%']>0]
+        worsened=valid[valid['Reducción_%']<0]
+        if not improved.empty:
+            best=improved.sort_values('Reducción_%',ascending=False).iloc[0]
+            st.markdown(f'<div class="goodbox"><b>Lectura Lean:</b> la mayor reducción observada es <b>{best["Indicador Lean"]}</b> con <b>{best["Reducción_%"]:.1f}%</b>. Es una comparación descriptiva y debe interpretarse junto con el diseño de validación.</div>',unsafe_allow_html=True)
+        if not worsened.empty:
+            bad=worsened.sort_values('Reducción_%').iloc[0]
+            st.warning(f'Atención: {bad["Indicador Lean"]} aumentó respecto a ANTES ({bad["Reducción_%"]:.1f}% de reducción, valor negativo). Revise el proceso.')
+    st.caption('Comparabilidad: esta pestaña filtra por Producto, Proceso, Área y Turno. El lote no se usa para emparejar ANTES/DESPUÉS porque normalmente cambia entre periodos.')
+    st.markdown('<div class="goodbox"><b>Principio de decisión:</b> una reducción positiva indica mejora descriptiva. La causalidad de la intervención debe validarse con el diseño del estudio.</div>',unsafe_allow_html=True)
     footer()
 
 # SPC
@@ -897,11 +1054,14 @@ with tabs[6]:
     if fa is None:
         st.markdown('<div class="warnbox"><b>Línea base activa.</b> Aún no se ha ejecutado el Excel DESPUÉS. La validación muestra únicamente la información del primer archivo y no inventa resultados posteriores.</div>',unsafe_allow_html=True)
         base=comparison_long(f,None)[['Indicador','Antes']];st.dataframe(base.round(2),width='stretch',hide_index=True)
-        chart=base[base.Indicador.isin(['% NC','% Retrabajo'])].melt(id_vars='Indicador',value_vars=['Antes'],var_name='Escenario',value_name='Valor');fig=px.bar(chart,x='Indicador',y='Valor',color='Escenario',text_auto='.2f',color_discrete_map={'Antes':CYAN});st.plotly_chart(plot_layout(fig,390,'Indicadores de línea base · ANTES'),width='stretch')
+        chart=base[base.Indicador.isin(['% NC','Retrabajos','Eventos / 100'])].melt(id_vars='Indicador',value_vars=['Antes'],var_name='Escenario',value_name='Valor');fig=px.bar(chart,x='Indicador',y='Valor',color='Escenario',text_auto='.2f',color_discrete_map={'Antes':CYAN});st.plotly_chart(plot_layout(fig,390,'Indicadores de línea base · ANTES'),width='stretch')
     else:
         comp=comparison_long(f,fa);st.dataframe(comp.round(2),width='stretch',hide_index=True)
-        chart=comp[comp.Indicador.isin(['% NC','% Retrabajo','Defecto sellado','Incid. higiene','Incid. limpieza','Incid. manipulación'])].melt(id_vars='Indicador',value_vars=['Antes','Después','Reducción_%'],var_name='Escenario',value_name='Valor')
-        fig=px.bar(chart,x='Indicador',y='Valor',color='Escenario',barmode='group',text_auto='.2f',color_discrete_map={'Antes':CYAN,'Después':GREEN,'Reducción %':AMBER,'Reducción_%':AMBER});st.plotly_chart(plot_layout(fig,450,'Validación integrada · Antes / Después / Reducción %'),width='stretch')
+        chart=comp[comp.Indicador.isin(['% NC','Retrabajos','Eventos de riesgo','Eventos / 100'])].melt(id_vars='Indicador',value_vars=['Antes','Después'],var_name='Escenario',value_name='Valor')
+        fig=px.bar(chart,x='Indicador',y='Valor',color='Escenario',barmode='group',text_auto='.2f',color_discrete_map={'Antes':CYAN,'Después':GREEN});st.plotly_chart(plot_layout(fig,430,'Validación integrada · Antes vs. Después'),width='stretch')
+        redv=comp[comp.Indicador.isin(['% NC','Retrabajos','Eventos de riesgo','Eventos / 100'])].dropna(subset=['Reducción_%'])
+        if not redv.empty:
+            fig2=px.bar(redv,x='Indicador',y='Reducción_%',text_auto='.1f',color='Reducción_%',color_continuous_scale=['#F97316','#FBBF24','#22C55E']);fig2.update_traces(texttemplate='%{y:.1f}%',textposition='outside');st.plotly_chart(plot_layout(fig2,350,'Reducción relativa por indicador (%)'),width='stretch')
         b=metric_pack(f)['% NC'];a=metric_pack(fa)['% NC'];r=reduction_pct(b,a)
         if pd.isna(r):st.info('No es posible calcular reducción relativa de % NC porque la línea base es cero o no válida.')
         elif r>0:st.markdown(f'<div class="goodbox">La no conformidad pasó de <b>{b:.2f}%</b> a <b>{a:.2f}%</b>: reducción descriptiva relativa de <b>{r:.2f}%</b>. La atribución causal requiere el diseño de validación del estudio.</div>',unsafe_allow_html=True)
@@ -920,14 +1080,14 @@ with tabs[7]:
         plan=pd.DataFrame([{
             'Prioridad':1,'Proceso crítico':crit.proceso,'Evidencia':f'{crit.Porcentaje_NC:.2f}% NC','Señal':top.Señal,
             'Causa potencial a verificar':top['Causa potencial a verificar'],'Acción sugerida':top['Acción sugerida'],
-            'Herramienta':'SIPOC/VSM + DMAIC + Ishikawa + Lean/SPC','Indicador de control':'% NC / % retrabajo / señal específica','Estado':'Pendiente de validación humana'}])
+            'Herramienta':'SIPOC/VSM + DMAIC + Ishikawa + Lean/SPC','Indicador de control':'% NC / retrabajos / eventos por 100 / NPR','Estado':'Pendiente de validación humana'}])
         st.dataframe(plan,width='stretch',hide_index=True)
         st.markdown(f'<div class="section-card"><b>Justificación automática</b><br><br>El DSS prioriza <b>{crit.proceso}</b> por presentar el mayor % de no conformidad observado ({crit.Porcentaje_NC:.2f}%). La señal dominante es <b>{top.Señal}</b>. La causa presentada es una hipótesis que debe verificarse antes de cerrar una acción correctiva.</div>',unsafe_allow_html=True)
     if fa is not None:
         st.subheader('Resultado comparativo de la intervención')
         st.dataframe(comparison_long(f,fa).round(2),width='stretch',hide_index=True)
     st.subheader('Matriz de evidencia y explicabilidad')
-    ev=[['Datos operacionales','Sí',f'{len(f)} registros'],['Laboratorio','Sí' if 'resultado_laboratorio' in f else 'No','Evidencia analítica registrada' if 'resultado_laboratorio' in f else 'No incluida'],['SIPOC / flujo','Sí','Generado automáticamente'],['VSM cuantitativo','Sí' if all(c in f for c in ['tiempo_ciclo_min','tiempo_espera_min','tiempo_va_min']) else 'Parcial','Depende de columnas de tiempo'],['FMEA S/O/D','Pendiente','Requiere escala validada'],['SPC','Sí' if any(c in f for c in ['temperatura_c','tiempo_ciclo_min']) else 'No','Control estadístico exploratorio']]
+    ev=[['Datos operacionales','Sí',f'{len(f)} registros'],['Laboratorio','Sí' if 'resultado_laboratorio' in f else 'No','Evidencia analítica registrada' if 'resultado_laboratorio' in f else 'No incluida'],['SIPOC / flujo','Sí','Generado automáticamente'],['VSM cuantitativo','Sí' if all(c in f for c in ['tiempo_ciclo_min','tiempo_espera_min']) else 'Parcial','Depende de columnas de tiempo'],['FMEA S/O/D','Automático','Calculado desde variables observables; validar escala DSS-RCC v18'],['SPC','Sí' if any(c in f for c in ['temperatura_c','tiempo_ciclo_min']) else 'No','Control estadístico exploratorio']]
     st.dataframe(pd.DataFrame(ev,columns=['Fuente','Disponible','Detalle']),width='stretch',hide_index=True)
     footer()
 
@@ -935,7 +1095,7 @@ with tabs[7]:
 with tabs[8]:
     st.header('Reporte gerencial automático')
     f,fa=filters_pair(d,d_after,'rep')
-    st.markdown('<div class="callout"><b>Contenido:</b> resumen ejecutivo, KPIs, diagnóstico por proceso, señales y acciones priorizadas, arquitectura metodológica, DMAIC, Ishikawa 6M, matriz de evidencia, nota metodológica y espacio de revisión.</div>',unsafe_allow_html=True)
+    st.markdown('<div class="callout"><b>Contenido:</b> resumen ejecutivo, comparación ANTES/DESPUÉS, mejora porcentual, FMEA, Lean, procesos prioritarios, recomendaciones de qué mejorar y cómo actuar, limitaciones metodológicas y espacio de revisión.</div>',unsafe_allow_html=True)
     if fa is not None:
         st.subheader('Resumen Antes / Después / Reducción')
         st.dataframe(comparison_long(f,fa).round(2),width='stretch',hide_index=True)
@@ -943,6 +1103,6 @@ with tabs[8]:
     st.caption('El nombre ingresado aparecerá en el reporte gerencial PDF como responsable de la revisión.')
     pdf=pdf_report(f,fa,responsable)
     if pdf:
-        st.download_button('⬇️ Descargar reporte gerencial PDF',pdf,'Reporte_Gerencial_DSS_RCC_Decisiones_v16.pdf','application/pdf',width='stretch')
+        st.download_button('⬇️ Descargar reporte gerencial PDF',pdf,'Reporte_Gerencial_DSS_RCC_v18.pdf','application/pdf',width='stretch')
     else:st.error('Para generar el PDF instale ReportLab: python3 -m pip install reportlab')
     footer()
